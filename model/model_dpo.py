@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM
+from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, pipeline
 from models.model_base import PreTrainedModelWrapper
 
 class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
@@ -203,7 +203,20 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         ###############################################################
         # TODO: Please implement your customized forward pass here
         # =============================================================
-        raise NotImplementedError
+
+        outputs = self.pretrained_model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            **kwargs,
+        )
+        
+        output_dict = {
+            "logits": outputs.logits,
+            "hidden_states": outputs.hidden_states,
+            "past_key_values": outputs.past_key_values if hasattr(outputs, 'past_key_values') else None,
+        }     
+
+        # raise NotImplementedError
         ###############################################################
 
         return output_dict
@@ -270,9 +283,27 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         ########################################################################
         # TODO: Please implement the prediction step that computes the rewards
         # ======================================================================
+        
+        # From the paper: 
+        ## TL;DR summarization, we use β = 0.5, while rest of the parameters remain the same.
+        
+        # Just in case we need to calc losses somewhere
+        # losses = -F.logsigmoid(temperature * (pi_logratios - ref_logratios))
+
+        # Set temperature
+        temperature = 0.5 
+
+        # Calculate rewards
+        chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps)# .detach()
+        rejected_rewards = temperature * (policy_rejected_logps - reference_rejected_logps)# .detach()
+
+        output_dict = {
+            "chosen_rewards": chosen_rewards,
+            "rejected_rewards": rejected_rewards
+        }       
+
         # You need to return one reward score for each chosen and rejected response.
         # ======================================================================
-        raise NotImplementedError
         ########################################################################
 
         return output_dict
@@ -299,6 +330,11 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         ########################################################################
         # TODO: Please implement the prediction step that generates the prediction of the given MCQA question
         # ======================================================================
+
+        # HuggingFace pipeline: https://huggingface.co/docs/transformers/main_classes/pipelines. 
+        # There exists question-ansewring mode, but i am not sure if Phi-3 supports this.
+        ... # TODO: This might be for Milestone 3! Implement this after discussing with team.
+
         # You need to return one letter prediction for each question.
         # ======================================================================
         raise NotImplementedError
