@@ -271,8 +271,8 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
             maxlen = max([len(t[0]) for t in concat_tokens])
 
             # For a chat model, we need to only keep the response mask as 1s here
-            attention_mask = torch.zeros(len(concat_tokens), maxlen)
-            mask = torch.zeros(len(concat_tokens), maxlen)
+            attention_mask = torch.zeros(len(concat_tokens), maxlen).to(model.device)
+            mask = torch.zeros(len(concat_tokens), maxlen).to(model.device)
             for i in range(len(concat_tokens)):
                 # Mask out the tokens not corresponding to output
                 mask[i, prompt_tokens[i].shape[1]:prompt_tokens[i].shape[1] + resp_tokens[i].shape[1]] = 1
@@ -288,7 +288,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
                 mask = mask[:, :self.max_seq_length]
                 print("Warning: Truncated input to max_seq_length")
 
-            outputs = model(input_ids=all_tokens.to(model.device), attention_mask=attention_mask)
+            outputs = model(input_ids=all_tokens.to(model.device), attention_mask=attention_mask.to(model.device))
             logprobs = F.log_softmax(outputs.logits, dim=-1)
             logprobs = torch.gather(logprobs, 2, all_tokens.to(model.device).unsqueeze(-1)).squeeze(-1)
             return torch.sum(logprobs * mask, dim=-1)
