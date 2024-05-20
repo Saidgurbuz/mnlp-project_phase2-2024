@@ -347,8 +347,8 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         temperature = 0.1
 
         # Calculate rewards
-        chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps)  # .detach()
-        rejected_rewards = temperature * (policy_rejected_logps - reference_rejected_logps)  # .detach()
+        chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps).detach()
+        rejected_rewards = temperature * (policy_rejected_logps - reference_rejected_logps).detach()
 
         output_dict = {
             "chosen_rewards": chosen_rewards,
