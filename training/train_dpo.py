@@ -81,7 +81,7 @@ class DPOTrainer:
                 self.optimizer.zero_grad()
 
                 # To test that loss goes down, uncomment
-                break
+                # break
 
     def save_model(self):
         pass
