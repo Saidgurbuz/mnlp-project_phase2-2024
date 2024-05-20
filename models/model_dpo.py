@@ -6,6 +6,7 @@ from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, pipeline
 from peft import get_peft_model
 
 from models.model_base import PreTrainedModelWrapper
+from models.model_base import create_reference_model
 
 
 class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
@@ -66,6 +67,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
 
         self.peft_model = get_peft_model(self.pretrained_model, peft_config)
         self.peft_model.print_trainable_parameters()
+        self.pretrained_model = create_reference_model(self.peft_model)
         self._init_weights()
         ###########################################################################################
 
@@ -342,7 +344,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # losses = -F.logsigmoid(temperature * (pi_logratios - ref_logratios))
 
         # Set temperature
-        temperature = 0.5
+        temperature = 0.1
 
         # Calculate rewards
         chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps)  # .detach()
