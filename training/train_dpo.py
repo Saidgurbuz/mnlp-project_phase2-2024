@@ -85,7 +85,7 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     dataset_names: List[str] = field(
-        default_factory=lambda: ["data/dpo/m1preferencedata/m1.jsonl"],#, "data/dpo/m1preferencedata/m1.jsonl"], # NOTE: Add datasets here!
+        default_factory=lambda: ["data/dpo/dpo_preference_m1.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
         metadata={"help": "List of preference datasets to use."},
     )
 
@@ -128,7 +128,7 @@ def main(model_args, data_args):
     # TODO: Discuss about the parameters, there are a lot
     training_args = DPOConfig(
         beta=0.1,
-        output_dir="checkpoints/" + model_args.model_name_or_path,
+        output_dir="checkpoints/" + model_args.model_name_or_path, # TODO: CHANGE THIS TO YOUR DESIRED PATH
         do_eval = True,
         logging_steps=20,
         save_steps = 500,
