@@ -30,21 +30,29 @@ def load_and_process_datasets(community_list):
     train_entries, validation_entries = train_test_split(
         all_entries, test_size=0.3, random_state=42) 
 
-    train_dir = 'dpo/stackexchange/train_stackexchange.jsonl'
-    validation_dir = 'dpo/stackexchange/validation_stackexchange.jsonl'
-    os.makedirs(os.path.dirname(train_dir), exist_ok=True)
-    with open(train_dir, 'w') as outfile:
-        for entry in train_entries:
+    # train_dir = 'dpo/stackexchange/train_stackexchange.jsonl'
+    # validation_dir = 'dpo/stackexchange/validation_stackexchange.jsonl'
+    all_dir = 'dpo/stackexchange/stackexchange.jsonl'
+
+    # os.makedirs(os.path.dirname(train_dir), exist_ok=True)
+    # with open(train_dir, 'w') as outfile:
+    #     for entry in train_entries:
+    #         json.dump(entry, outfile)
+    #         outfile.write('\n')
+
+    # os.makedirs(os.path.dirname(validation_dir), exist_ok=True)
+    # with open(validation_dir, 'w') as outfile:
+    #     for entry in validation_entries:
+    #         json.dump(entry, outfile)
+    #         outfile.write('\n')
+
+    os.makedirs(os.path.dirname(all_dir), exist_ok=True)
+    with open(all_dir, 'w') as outfile:
+        for entry in all_entries:
             json.dump(entry, outfile)
             outfile.write('\n')
 
-    os.makedirs(os.path.dirname(validation_dir), exist_ok=True)
-    with open(validation_dir, 'w') as outfile:
-        for entry in validation_entries:
-            json.dump(entry, outfile)
-            outfile.write('\n')
-
-    print("Data split complete.")
+    print("Data preprocessing complete.")
 
 
 if __name__ == "__main__":

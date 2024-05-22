@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import sys
 from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, pipeline
 from peft import get_peft_model
-
+import gc
 from models.model_base import PreTrainedModelWrapper
+from models.model_base import create_reference_model
 
 
 class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
@@ -64,8 +65,14 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # Not sure why this was necessary, dropped for now
         # custom_kwargs, _, _ = self._split_kwargs(kwargs)
 
-        self.peft_model = get_peft_model(self.pretrained_model, peft_config)
-        self.peft_model.print_trainable_parameters()
+        # TODO: Change this after training !
+        # create frozen reference model 
+        self.pretrained_model = create_reference_model(pretrained_model)
+
+        # create the peft model
+        self.peft_model = get_peft_model(pretrained_model, peft_config)
+
+
         self._init_weights()
         ###########################################################################################
 
@@ -101,7 +108,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # TODO (Optional): Please uncomment the following lines to initialize your custom module
         # Make sure "custom_module" is repalced with the name of your custom module class
         # =========================================================================================
-        peft_state_dict = self.peft_model.peft_.state_dict(*args, **kwargs)
+        peft_state_dict = self.peft_model.state_dict(*args, **kwargs)
         # for k, v in custom_module_state_dict.items():
         #     pretrained_model_state_dict[f"custom_module.{k}"] = v
         ###########################################################################################
@@ -262,41 +269,46 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         chosen_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"] for resp in batch["chosen"]]
         rejected_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"] for resp in batch["rejected"]]
 
-        concat_chosen_tokens = [torch.cat([prompt_tokens[i], chosen_tokens[i]], dim=1)
-                                for i in range(len(chosen_tokens))]
-
         def get_logps(prompt_tokens, resp_tokens):
+            
             concat_tokens = [torch.cat([prompt_tokens[i], resp_tokens[i]], dim=1)
                              for i in range(len(resp_tokens))]
             maxlen = max([len(t[0]) for t in concat_tokens])
 
             # For a chat model, we need to only keep the response mask as 1s here
-            attention_mask = torch.zeros(len(concat_tokens), maxlen)
-            mask = torch.zeros(len(concat_tokens), maxlen)
+            attention_mask = torch.zeros(len(concat_tokens), maxlen).to(model.device)
+            mask = torch.zeros(len(concat_tokens), maxlen).to(model.device)
             for i in range(len(concat_tokens)):
                 # Mask out the tokens not corresponding to output
                 mask[i, prompt_tokens[i].shape[1]:prompt_tokens[i].shape[1] + resp_tokens[i].shape[1]] = 1
                 # Mask out the actual padding
                 attention_mask[i, :prompt_tokens[i].shape[1] + resp_tokens[i].shape[1]] = 1
 
-            all_tokens = torch.cat([torch.cat([t, torch.zeros((1, maxlen - t.shape[1]), dtype=t.dtype).to(t.device)], dim=1) for t in concat_tokens],
-                                   dim=0)
+            concat = [torch.cat([t, torch.zeros((1, maxlen - t.shape[1]), dtype=t.dtype).to(t.device)], dim=1) for t in concat_tokens]
+            all_tokens = torch.cat(concat, dim=0)
 
-            if all_tokens.shape[1] > self.max_seq_length:
+            if all_tokens.shape[1] > self.max_seq_length: 
                 all_tokens = all_tokens[:, :self.max_seq_length]
                 attention_mask = attention_mask[:, :self.max_seq_length]
                 mask = mask[:, :self.max_seq_length]
                 print("Warning: Truncated input to max_seq_length")
 
-            outputs = model(input_ids=all_tokens.to(model.device), attention_mask=attention_mask)
+            outputs = model(input_ids=all_tokens.to(model.device), attention_mask=attention_mask.to(model.device))
+
             logprobs = F.log_softmax(outputs.logits, dim=-1)
+            
+            del outputs
+            torch.cuda.empty_cache()
+
             logprobs = torch.gather(logprobs, 2, all_tokens.to(model.device).unsqueeze(-1)).squeeze(-1)
-            return torch.sum(logprobs * mask, dim=-1)
+
+            output = torch.sum(logprobs*mask, dim=-1)
+            return output
 
         # TODO: think if we need to normalize this by the length of the output for stability?
         return get_logps(prompt_tokens, chosen_tokens), get_logps(prompt_tokens, rejected_tokens)
 
-    def get_logprobs(self, batch, tokenizer):
+    def get_logprobs(self, batch, tokenizer, val_mode=False):
         return self._get_logprobs(self.peft_model, batch, tokenizer)
 
     def get_ref_logprobs(self, batch, tokenizer):
@@ -345,8 +357,8 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         temperature = 0.5
 
         # Calculate rewards
-        chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps)  # .detach()
-        rejected_rewards = temperature * (policy_rejected_logps - reference_rejected_logps)  # .detach()
+        chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps).detach()
+        rejected_rewards = temperature * (policy_rejected_logps - reference_rejected_logps).detach()
 
         output_dict = {
             "chosen_rewards": chosen_rewards,

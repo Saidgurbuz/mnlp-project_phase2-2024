@@ -78,8 +78,8 @@ if __name__ == "__main__":
     # Split the data into training and validation sets
     train_data, validation_data = train_test_split(transformed_data, test_size=0.3, random_state=42)
 
-    save_to_jsonl(train_data, train_output_file_path)
-    save_to_jsonl(validation_data, validation_output_file_path)
+    # save_to_jsonl(train_data, train_output_file_path)
+    # save_to_jsonl(validation_data, validation_output_file_path)
     save_to_jsonl(transformed_data, output_file_path)
 
-    print("Data transformation and splitting complete.")
+    print("Data transformation complete.")
