@@ -85,7 +85,7 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     dataset_names: List[str] = field(
-        default_factory=lambda: ["data/dpo/dpo_preference_m1.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
+        default_factory=lambda: ["../data/dpo_preference_example.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
         metadata={"help": "List of preference datasets to use."},
     )
 
@@ -138,6 +138,8 @@ def main(model_args, data_args):
         fp16 = True,
         fp16_full_eval = True,
         adafactor = False, # consider making it true
+        evaluation_strategy = "steps",
+        eval_steps = 2500,
         # gradient_checkpointing = model_args.gradient_checkpointing,
     )
     trainer = DPOTrainer(
