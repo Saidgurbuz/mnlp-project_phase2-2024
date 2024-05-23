@@ -84,9 +84,17 @@ class ModelArguments:
     )
 @dataclass
 class DataArguments:
-    dataset_names: List[str] = field(
-        default_factory=lambda: ["../data/dpo_preference_example.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
+    train_dataset_names: List[str] = field(
+        default_factory=lambda: ["../data/dpo/dpo_preference_stackexchange.jsonl", "../data/dpo/dpo_preference_ultrafeedback.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
         metadata={"help": "List of preference datasets to use."},
+    )
+    m1_dataset_path: str = field(
+        default="../data/dpo/dpo_preference_m1.jsonl",
+        metadata={"help": "Path to the m1 preference dataset that will be always used for training."},
+    )
+    example_dataset_path: str = field(
+        default="../data/dpo_preference_example.jsonl",
+        metadata={"help": "Path to the example preference dataset that will be always used for evaluation."},
     )
 
     max_seq_length: Optional[int] = field(default=1024)
@@ -123,7 +131,8 @@ def main(model_args, data_args):
     if model_args.gradient_checkpointing:
         model_args.gradient_checkpointing_kwargs = {"use_reentrant": model_args.use_reentrant}
 
-    train_dataset, validation_dataset = create_datasets(data_args.dataset_names, data_args.val_perc)
+    train_dataset, validation_dataset = create_datasets(data_args.train_dataset_names, data_args.m1_dataset_path,
+                                                         data_args.example_dataset_path, data_args.val_perc)
     
     # TODO: Discuss about the parameters, there are a lot
     training_args = DPOConfig(
@@ -131,7 +140,10 @@ def main(model_args, data_args):
         output_dir="checkpoints/" + model_args.model_name_or_path, # TODO: CHANGE THIS TO YOUR DESIRED PATH
         do_eval = True,
         logging_steps=20,
-        save_steps = 500,
+        save_steps = 1000,
+        load_best_model_at_end = True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         per_device_train_batch_size = 1,
         per_device_eval_batch_size = 1,
         gradient_accumulation_steps = 4,

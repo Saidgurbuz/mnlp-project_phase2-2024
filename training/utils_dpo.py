@@ -8,7 +8,7 @@ project_root = os.path.normpath(project_root)
 sys.path.insert(0, project_root)
 
 from enum import Enum
-from datasets import Dataset
+from datasets import Dataset, concatenate_datasets
 
 import torch
 from datasets import DatasetDict, load_dataset, load_from_disk
@@ -75,16 +75,21 @@ def transform_dataset(data):
         "rejected": rejected_responses
     }
 
-def create_datasets(file_paths, valid_perc=0.1):
-    combined_data = read_jsonl_files(file_paths)
+def create_datasets(train_file_paths, m1_file_path, example_file_path, valid_perc=0.1):
+    combined_data = read_jsonl_files(train_file_paths)
     
     transformed_data = transform_dataset(combined_data)
     
     full_dataset = Dataset.from_dict(transformed_data)
 
+    m1_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files([m1_file_path])))
+    example_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files([example_file_path])))
+
     split_datasets = full_dataset.train_test_split(test_size=valid_perc)
-    
-    return split_datasets["train"], split_datasets["test"]
+
+    full_train_dataset = concatenate_datasets([split_datasets["train"], m1_dataset])
+    full_test_dataset = concatenate_datasets([split_datasets["test"], example_dataset])
+    return full_train_dataset, full_test_dataset
 
 def create_and_prepare_model(args, data_args):
     if args.use_unsloth:
