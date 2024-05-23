@@ -22,7 +22,7 @@ def save_to_jsonl(data, filename):
     print(f"Data saved successfully to {filename}.")
  
 if __name__ == "__main__":
-    seed = 42
+    seed = 233
     np.random.seed(seed)
     random.seed(seed)
  
@@ -34,12 +34,12 @@ if __name__ == "__main__":
     transformed_data = [transform_entry(entry) for entry in dataset['train']]
     print("Data transformation complete.")
  
-    # print("Splitting data into train and validation sets...")
-    # train_data, val_data = train_test_split(transformed_data, test_size=0.3, random_state=42)
-    # print("Data split complete.")
+    print("Splitting data into train and validation sets...")
+    train_data, val_data = train_test_split(transformed_data, test_size=0.1, random_state=233)
+    print("Data split complete.")
  
-    # save_to_jsonl(train_data, 'dpo/ultrafeedback/train_ultrafeedback.jsonl')
-    # save_to_jsonl(val_data, 'dpo/ultrafeedback/validation_ultrafeedback.jsonl')
+    save_to_jsonl(train_data, 'dpo/ultrafeedback/train_ultrafeedback.jsonl')
+    save_to_jsonl(val_data, 'dpo/ultrafeedback/validation_ultrafeedback.jsonl')
 
-    save_to_jsonl(transformed_data, 'dpo/ultrafeedback/ultrafeedback.jsonl')
+    # save_to_jsonl(transformed_data, 'dpo/ultrafeedback/ultrafeedback.jsonl')
     print("Data saved!")

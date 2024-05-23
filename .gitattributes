@@ -5,3 +5,4 @@ data/dpo/dpo_preference_ultrafeedback.jsonl filter=lfs diff=lfs merge=lfs -text
 data/mcqa/mcqa_ai2arc.jsonl filter=lfs diff=lfs merge=lfs -text
 data/mcqa/mcqa_mmlu_test.jsonl filter=lfs diff=lfs merge=lfs -text
 data/mcqa/mcqa_mmlu_train.jsonl filter=lfs diff=lfs merge=lfs -text
+*.jsonl filter=lfs diff=lfs merge=lfs -text

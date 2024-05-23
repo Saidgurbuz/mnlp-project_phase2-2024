@@ -65,6 +65,8 @@ def transform_dataset(data):
     rejected_responses = []
     
     for entry in data:
+        if entry["chosen"] == entry["rejected"]:
+            continue
         prompts.append(entry["prompt"])
         chosen_responses.append(entry["chosen"])
         rejected_responses.append(entry["rejected"])
@@ -80,19 +82,15 @@ def create_datasets(train_file_paths, m1_file_path, example_file_path, eval_file
     
     transformed_data = transform_dataset(combined_data)
     
-    full_dataset = Dataset.from_dict(transformed_data)
+    train_dataset = Dataset.from_dict(transformed_data)
 
     eval_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files(eval_file_paths)))
 
     m1_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files([m1_file_path])))
     example_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files([example_file_path])))
 
-    split_datasets = full_dataset.train_test_split(test_size=valid_perc)
-
-    test_split = eval_dataset.train_test_split(test_size=valid_perc)["test"]
-
-    full_train_dataset = concatenate_datasets([split_datasets["train"], m1_dataset])
-    full_test_dataset = concatenate_datasets([test_split, example_dataset])
+    full_train_dataset = concatenate_datasets([train_dataset, m1_dataset])
+    full_test_dataset = concatenate_datasets([eval_dataset, example_dataset])
     return full_train_dataset, full_test_dataset
 
 def create_and_prepare_model(args, data_args):

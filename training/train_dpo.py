@@ -85,7 +85,7 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     train_dataset_names: List[str] = field(
-        default_factory=lambda: ["../data/dpo/dpo_preference_stackexchange.jsonl", "../data/dpo/dpo_preference_ultrafeedback.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
+        default_factory=lambda: ["../data/dpo/stackexchange/train_stackexchange.jsonl", "../data/dpo/ultrafeedback/train_ultrafeedback.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
         metadata={"help": "List of preference datasets to use."},
     )
     m1_dataset_path: str = field(
@@ -98,7 +98,7 @@ class DataArguments:
     )
 
     eval_dataset_names: List[str] = field(
-        default_factory=lambda: ["../data/dpo/dpo_preference_stackexchange.jsonl", "../data/dpo/dpo_preference_ultrafeedback.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
+        default_factory=lambda: ["../data/dpo/stackexchange/validation_stackexchange.jsonl", "../data/dpo/ultrafeedback/validation_ultrafeedback.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
         metadata={"help": "List of preference datasets to use for validation."},
     )
 
@@ -145,7 +145,7 @@ def main(model_args, data_args):
         output_dir="checkpoints/" + model_args.model_name_or_path + "m1-stack", # TODO: CHANGE THIS TO YOUR DESIRED PATH
         do_eval = True,
         logging_steps=20,
-        save_steps = 1000,
+        save_steps = 10000,
         load_best_model_at_end = True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
@@ -156,7 +156,7 @@ def main(model_args, data_args):
         fp16_full_eval = True,
         adafactor = False, # consider making it true
         evaluation_strategy = "steps",
-        eval_steps = 2500,
+        eval_steps = 10000,
         # gradient_checkpointing = model_args.gradient_checkpointing,
     )
     trainer = DPOTrainer(
