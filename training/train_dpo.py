@@ -97,6 +97,11 @@ class DataArguments:
         metadata={"help": "Path to the example preference dataset that will be always used for evaluation."},
     )
 
+    eval_dataset_names: List[str] = field(
+        default_factory=lambda: ["../data/dpo/dpo_preference_stackexchange.jsonl", "../data/dpo/dpo_preference_ultrafeedback.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
+        metadata={"help": "List of preference datasets to use for validation."},
+    )
+
     max_seq_length: Optional[int] = field(default=1024)
 
     val_perc: float = field(default=0.1)
@@ -132,12 +137,12 @@ def main(model_args, data_args):
         model_args.gradient_checkpointing_kwargs = {"use_reentrant": model_args.use_reentrant}
 
     train_dataset, validation_dataset = create_datasets(data_args.train_dataset_names, data_args.m1_dataset_path,
-                                                         data_args.example_dataset_path, data_args.val_perc)
+                                                         data_args.example_dataset_path, data_args.eval_dataset_names, data_args.val_perc)
     
     # TODO: Discuss about the parameters, there are a lot
     training_args = DPOConfig(
         beta=0.1,
-        output_dir="checkpoints/" + model_args.model_name_or_path, # TODO: CHANGE THIS TO YOUR DESIRED PATH
+        output_dir="checkpoints/" + model_args.model_name_or_path + "m1-stack", # TODO: CHANGE THIS TO YOUR DESIRED PATH
         do_eval = True,
         logging_steps=20,
         save_steps = 1000,
