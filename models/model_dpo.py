@@ -36,7 +36,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
 
     ####################################################################################
 
-    def __init__(self, pretrained_model, peft_config, max_seq_length, **kwargs):
+    def __init__(self, pretrained_model, **kwargs):
         r"""
         Initializes the model.
 
@@ -52,8 +52,6 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         if not any(hasattr(self.pretrained_model, attribute) for attribute in self.lm_head_namings):
             raise ValueError("The model does not have a language model head, please use a model that has one.")
 
-        self.max_seq_length = max_seq_length
-
         ###########################################################################################
         # TODO (Optional): Please uncomment the following lines to initialize your custom module
         # Make sure CustomModule is repalced with the name of your custom module class
@@ -61,19 +59,10 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # You can reanme the class and the variabels to fit your custom module name,
         # just make sure they are consistent in the code
         # =========================================================================================
-        self.is_peft_model = True
+        # self.is_peft_model = True
         # Not sure why this was necessary, dropped for now
         # custom_kwargs, _, _ = self._split_kwargs(kwargs)
-
-        # TODO: Change this after training !
-        # create frozen reference model 
-        self.pretrained_model = create_reference_model(pretrained_model)
-
-        # create the peft model
-        self.peft_model = get_peft_model(pretrained_model, peft_config)
-
-
-        self._init_weights()
+        # self._init_weights()
         ###########################################################################################
 
     def _init_weights(self, **kwargs):
@@ -108,7 +97,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # TODO (Optional): Please uncomment the following lines to initialize your custom module
         # Make sure "custom_module" is repalced with the name of your custom module class
         # =========================================================================================
-        peft_state_dict = self.peft_model.state_dict(*args, **kwargs)
+        # peft_state_dict = self.peft_model.state_dict(*args, **kwargs)
         # for k, v in custom_module_state_dict.items():
         #     pretrained_model_state_dict[f"custom_module.{k}"] = v
         ###########################################################################################
@@ -119,7 +108,6 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         We add the state dictionary of the custom module to the state dictionary of the wrapped model
         by prepending the key with `custom_module.`. This function removes the `custom_module.` prefix from the
         keys of the custom module state dictionary.
-
         IMPORTANT: Make sure to replace `custom_module` with the name of your custom module class name.
         """
         if not hasattr(self, 'custom_module'):
@@ -133,8 +121,8 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
 
         if hasattr(self.pretrained_model, "hf_device_map"):
             if (
-                    "cpu" in self.pretrained_model.hf_device_map.values()
-                    or "disk" in self.pretrained_model.hf_device_map.values()
+                "cpu" in self.pretrained_model.hf_device_map.values()
+                or "disk" in self.pretrained_model.hf_device_map.values()
             ):
                 raise ValueError(
                     "The model is offloaded on CPU or disk - CPU & disk offloading is not supported for CustomModule models."
@@ -153,7 +141,6 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
                 r"""
                 A hook that sets the device of the output of the model to the device of the first
                 parameter of the model.
-
                 Args:
                     module (`nn.Module`):
                         The module to which the hook is attached.
@@ -221,7 +208,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # TODO: Please implement your customized forward pass here
         # =============================================================
 
-        outputs = self.peft_model(
+        outputs = self.pretrained_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             **kwargs,
@@ -263,8 +250,19 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         """
 
         # TODO check the chat template. For phi-3 we prolly need to use the one here: https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
-        # For now I implement this directly by concatenating the tokens from the question and answer for the gpt-2 model
+        # Alternative: template: <|user|>\nQuestion <|end|>\n<|assistant|>
+        # def tokenize_with_template(prompt, response):
+        #         # Apply a template to the prompt
+        #         formatted_prompt = f"Question: {prompt}\nAnswer:"
+        #         combined_text = f"{formatted_prompt} {response}"
+        #         # Tokenize the combined text
+        #         return tokenizer(combined_text, padding=False, return_tensors="pt")["input_ids"]
 
+        # prompt_tokens = [tokenizer(f"Question: {p}", padding=False, return_tensors="pt")["input_ids"] for p in batch["prompt"]]
+        # chosen_tokens = [tokenize_with_template(p, resp) for p, resp in zip(batch["prompt"], batch["chosen"])]
+        # rejected_tokens = [tokenize_with_template(p, resp) for p, resp in zip(batch["prompt"], batch["rejected"])]
+        
+        # For now I implement this directly by concatenating the tokens from the question and answer for the gpt-2 model
         prompt_tokens = [tokenizer(p, padding=False, return_tensors="pt")["input_ids"] for p in batch["prompt"]]
         chosen_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"] for resp in batch["chosen"]]
         rejected_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"] for resp in batch["rejected"]]
@@ -297,21 +295,16 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
 
             logprobs = F.log_softmax(outputs.logits, dim=-1)
             
-            del outputs
-            torch.cuda.empty_cache()
-
             logprobs = torch.gather(logprobs, 2, all_tokens.to(model.device).unsqueeze(-1)).squeeze(-1)
 
             output = torch.sum(logprobs*mask, dim=-1)
+
             return output
 
         # TODO: think if we need to normalize this by the length of the output for stability?
         return get_logps(prompt_tokens, chosen_tokens), get_logps(prompt_tokens, rejected_tokens)
 
-    def get_logprobs(self, batch, tokenizer, val_mode=False):
-        return self._get_logprobs(self.peft_model, batch, tokenizer)
-
-    def get_ref_logprobs(self, batch, tokenizer):
+    def get_logprobs(self, batch, tokenizer):
         return self._get_logprobs(self.pretrained_model, batch, tokenizer)
 
     def prediction_step_reward(
@@ -353,8 +346,8 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # Just in case we need to calc losses somewhere
         # losses = -F.logsigmoid(temperature * (pi_logratios - ref_logratios))
 
-        # Set temperature
-        temperature = 0.5
+        # Should we use this for inference?
+        temperature = 0.1
 
         # Calculate rewards
         chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps).detach()
