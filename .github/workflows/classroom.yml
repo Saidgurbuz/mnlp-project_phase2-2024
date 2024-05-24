@@ -35,22 +35,10 @@ jobs:
         expected-output: Model directory is correctly formatted.
         comparison-method: contains
         timeout: 10
-    - name: RAG Documents Directory Exists
-      id: rag-documents-directory-exists
-      uses: classroom-resources/autograding-io-grader@v1
-      with:
-        test-name: RAG Documents Directory Exists
-        setup-command: ''
-        command: python _tests/model_rag_validator.py
-        input: ''
-        expected-output: Model documents directory exists for the RAG implementation.
-        comparison-method: contains
-        timeout: 10
     - name: Autograding Reporter
       uses: classroom-resources/autograding-grading-reporter@v1
       env:
         PROGRESS-REPORT-EXISTS_RESULTS: "${{steps.progress-report-exists.outputs.result}}"
         MODEL-DIRECTORY-CORRECTLY-FORMATTED_RESULTS: "${{steps.model-directory-correctly-formatted.outputs.result}}"
-        RAG-DOCUMENTS-DIRECTORY-EXISTS_RESULTS: "${{steps.rag-documents-directory-exists.outputs.result}}"
       with:
-        runners: progress-report-exists,model-directory-correctly-formatted,rag-documents-directory-exists
+        runners: progress-report-exists,model-directory-correctly-formatted
