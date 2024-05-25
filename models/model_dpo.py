@@ -258,7 +258,8 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
                 Log probabilities of the rejected responses. Shape: (batch_size,)
         """
 
-        # TODO check the chat template. For phi-3 we prolly need to use the one here: https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
+        # https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
+        # NOTE: This will probably be used for M3, ill leave it here for now
         # Alternative: template: <|user|>\nQuestion <|end|>\n<|assistant|>
         # def tokenize_with_template(prompt, response):
         #         # Apply a template to the prompt

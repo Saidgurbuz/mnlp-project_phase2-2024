@@ -1,7 +1,7 @@
 "team_name": "chatterbox" # Your team name
 "eval_method": ["reward"] # mcqa, reward, rag, compression
 "task_type": "causal_lm" # causal_lm, seq2seq
-"policy_model_path": "checkpoints/checkpoint-17500/" # Your path to the final checkpoint
+"policy_model_path": "checkpoints/microsoft/Phi-3-mini-4k-instructm1-stack-ultrafeedback/checkpoint-81000/" # Your path to the final checkpoint
 "reference_model_path": "microsoft/Phi-3-mini-4k-instruct" # The repo id of your pretrained reference model
 "quantized_policy_model_path": "./checkpoints/best_model_quantized/" # Your path to the final quantized checkpoint
 "rag_policy_model_path": "./checkpoints/best_model_rag/" # Your path to the final RAG checkpoint

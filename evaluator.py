@@ -190,10 +190,10 @@ class DPOModelEvaluator():
         test_data_map = {}
         for data in test_data:
             test_data_map[data['prompt']] = {}
-        test_dataloader = DataLoader(test_data, batch_size=8)
+        test_dataloader = DataLoader(test_data, batch_size=4)
         reference_model = self.model_class.from_pretrained(
-            self.reference_model_path)
-
+            self.reference_model_path, trust_remote_code=True)
+        
         for idx, batch in enumerate(test_dataloader):
             try:
                 chosen_logps, rejected_logps = reference_model.get_logprobs(batch, self.reference_tokenizer)
@@ -237,7 +237,8 @@ class DPOModelEvaluator():
         policy_rejected_rewards = []
         policy_model = self.model_class.from_pretrained(
             self.policy_model_path,
-            **self.dpo_model_args
+            **self.dpo_model_args,
+            trust_remote_code = True,
         )
 
         for idx, batch in enumerate(test_dataloader):
@@ -405,8 +406,7 @@ if __name__ == '__main__':
         )
         # Compute the log probabilities of the reference model for the test data
         new_test_data = evaluator.compute_reference_logprobs(test_data)
-        test_dataloader = DataLoader(new_test_data, batch_size=8)
-        # compute the reward accuracy
+        test_dataloader = DataLoader(new_test_data, batch_size=2)
         policy_reward_acc = evaluator.scoring_reward_computation(test_dataloader)
         metrics["policy_reward_accuracy"] = policy_reward_acc
 
