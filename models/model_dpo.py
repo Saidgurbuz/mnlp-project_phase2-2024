@@ -8,6 +8,7 @@ import gc
 from models.model_base import PreTrainedModelWrapper
 from models.model_base import create_reference_model
 
+import sys
 
 class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
     """
@@ -36,7 +37,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
 
     ####################################################################################
 
-    def __init__(self, pretrained_model, **kwargs):
+    def __init__(self, pretrained_model, device=torch.device("cuda"), **kwargs):
         r"""
         Initializes the model.
 
@@ -59,7 +60,15 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # You can reanme the class and the variabels to fit your custom module name,
         # just make sure they are consistent in the code
         # =========================================================================================
-        # self.is_peft_model = True
+        # self.is_peft_model = True       
+        self.device = device
+        self.pretrained_model = self.pretrained_model.to(device)
+        
+        # check if there are enabled gradients in the model and disable gradient flow 
+        for param in self.pretrained_model.parameters():
+            if param.requires_grad:
+                param.requires_grad = False
+
         # Not sure why this was necessary, dropped for now
         # custom_kwargs, _, _ = self._split_kwargs(kwargs)
         # self._init_weights()
@@ -256,16 +265,22 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         #         formatted_prompt = f"Question: {prompt}\nAnswer:"
         #         combined_text = f"{formatted_prompt} {response}"
         #         # Tokenize the combined text
-        #         return tokenizer(combined_text, padding=False, return_tensors="pt")["input_ids"]
+        #         return tokenizer(combined_text, padding=False, return_tensors="pt")["input_ids"].to(self.device)
 
-        # prompt_tokens = [tokenizer(f"Question: {p}", padding=False, return_tensors="pt")["input_ids"] for p in batch["prompt"]]
+        # prompt_tokens = [tokenizer(f"Question: {p}", padding=False, return_tensors="pt")["input_ids"].to(self.device) for p in batch["prompt"]]
         # chosen_tokens = [tokenize_with_template(p, resp) for p, resp in zip(batch["prompt"], batch["chosen"])]
         # rejected_tokens = [tokenize_with_template(p, resp) for p, resp in zip(batch["prompt"], batch["rejected"])]
         
         # For now I implement this directly by concatenating the tokens from the question and answer for the gpt-2 model
-        prompt_tokens = [tokenizer(p, padding=False, return_tensors="pt")["input_ids"] for p in batch["prompt"]]
-        chosen_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"] for resp in batch["chosen"]]
-        rejected_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"] for resp in batch["rejected"]]
+        prompt_tokens = [tokenizer(p, padding=False, return_tensors="pt")["input_ids"].to(self.device) for p in batch["prompt"]]
+        chosen_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"].to(self.device) for resp in batch["chosen"]]
+        rejected_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"].to(self.device) for resp in batch["rejected"]]
+
+        # check if the model has gradients enabled:
+        for param in model.parameters():
+            if param.requires_grad:
+                print("Warning: Model has gradients enabled!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
 
         def get_logps(prompt_tokens, resp_tokens):
             
@@ -274,30 +289,36 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
             maxlen = max([len(t[0]) for t in concat_tokens])
 
             # For a chat model, we need to only keep the response mask as 1s here
-            attention_mask = torch.zeros(len(concat_tokens), maxlen).to(model.device)
-            mask = torch.zeros(len(concat_tokens), maxlen).to(model.device)
+            attention_mask = torch.zeros(len(concat_tokens), maxlen).to(self.device)
+            mask = torch.zeros(len(concat_tokens), maxlen).to(self.device)
             for i in range(len(concat_tokens)):
                 # Mask out the tokens not corresponding to output
                 mask[i, prompt_tokens[i].shape[1]:prompt_tokens[i].shape[1] + resp_tokens[i].shape[1]] = 1
                 # Mask out the actual padding
                 attention_mask[i, :prompt_tokens[i].shape[1] + resp_tokens[i].shape[1]] = 1
 
-            concat = [torch.cat([t, torch.zeros((1, maxlen - t.shape[1]), dtype=t.dtype).to(t.device)], dim=1) for t in concat_tokens]
+            concat = [torch.cat([t, torch.zeros((1, maxlen - t.shape[1]), dtype=t.dtype).to(self.device)], dim=1) for t in concat_tokens]
             all_tokens = torch.cat(concat, dim=0)
 
-            if all_tokens.shape[1] > self.max_seq_length: 
-                all_tokens = all_tokens[:, :self.max_seq_length]
-                attention_mask = attention_mask[:, :self.max_seq_length]
-                mask = mask[:, :self.max_seq_length]
-                print("Warning: Truncated input to max_seq_length")
+            # if all_tokens.shape[1] > self.max_seq_length: 
+            #     all_tokens = all_tokens[:, :self.max_seq_length]
+            #     attention_mask = attention_mask[:, :self.max_seq_length]
+            #     mask = mask[:, :self.max_seq_length]
+            #     print("Warning: Truncated input to max_seq_length")
 
-            outputs = model(input_ids=all_tokens.to(model.device), attention_mask=attention_mask.to(model.device))
+            outputs = model(input_ids=all_tokens.to(self.device), attention_mask=attention_mask.to(self.device))
 
             logprobs = F.log_softmax(outputs.logits, dim=-1)
             
-            logprobs = torch.gather(logprobs, 2, all_tokens.to(model.device).unsqueeze(-1)).squeeze(-1)
+            logprobs = torch.gather(logprobs, 2, all_tokens.to(self.device).unsqueeze(-1)).squeeze(-1)
 
             output = torch.sum(logprobs*mask, dim=-1)
+
+            # clear memory 
+            del outputs
+            del logprobs
+            gc.collect()
+            torch.cuda.empty_cache()
 
             return output
 
@@ -349,15 +370,21 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # Should we use this for inference?
         temperature = 0.1
 
+        # set logs off device
+        policy_chosen_logps = policy_chosen_logps.to("cpu")
+        policy_rejected_logps = policy_rejected_logps.to("cpu")
+        reference_chosen_logps = reference_chosen_logps.to("cpu")
+        reference_rejected_logps = reference_rejected_logps.to("cpu")
+
         # Calculate rewards
-        chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps).detach()
-        rejected_rewards = temperature * (policy_rejected_logps - reference_rejected_logps).detach()
+        chosen_rewards = temperature * (policy_chosen_logps - reference_chosen_logps)
+        rejected_rewards = temperature * (policy_rejected_logps - reference_rejected_logps)
 
         output_dict = {
             "chosen_rewards": chosen_rewards,
             "rejected_rewards": rejected_rewards
         }
-
+        
         # You need to return one reward score for each chosen and rejected response.
         # ======================================================================
         ########################################################################
