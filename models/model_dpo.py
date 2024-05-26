@@ -37,7 +37,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
 
     ####################################################################################
 
-    def __init__(self, pretrained_model, device=torch.device("cuda"), **kwargs):
+    def __init__(self, pretrained_model, device=torch.device("cuda"), max_len=1024, **kwargs):
         r"""
         Initializes the model.
 
@@ -63,7 +63,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # self.is_peft_model = True       
         self.device = device
         self.pretrained_model = self.pretrained_model.to(device)
-        
+        self.max_seq_length = max_len
         # check if there are enabled gradients in the model and disable gradient flow 
         for param in self.pretrained_model.parameters():
             if param.requires_grad:
@@ -277,11 +277,6 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         chosen_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"].to(self.device) for resp in batch["chosen"]]
         rejected_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"].to(self.device) for resp in batch["rejected"]]
 
-        # check if the model has gradients enabled:
-        for param in model.parameters():
-            if param.requires_grad:
-                print("Warning: Model has gradients enabled!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
 
         def get_logps(prompt_tokens, resp_tokens):
             
@@ -301,11 +296,11 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
             concat = [torch.cat([t, torch.zeros((1, maxlen - t.shape[1]), dtype=t.dtype).to(self.device)], dim=1) for t in concat_tokens]
             all_tokens = torch.cat(concat, dim=0)
 
-            # if all_tokens.shape[1] > self.max_seq_length: 
-            #     all_tokens = all_tokens[:, :self.max_seq_length]
-            #     attention_mask = attention_mask[:, :self.max_seq_length]
-            #     mask = mask[:, :self.max_seq_length]
-            #     print("Warning: Truncated input to max_seq_length")
+            if all_tokens.shape[1] > self.max_seq_length: 
+                all_tokens = all_tokens[:, :self.max_seq_length]
+                attention_mask = attention_mask[:, :self.max_seq_length]
+                mask = mask[:, :self.max_seq_length]
+                print("Warning: Truncated input to max_seq_length")
 
             outputs = model(input_ids=all_tokens.to(self.device), attention_mask=attention_mask.to(self.device))
 
