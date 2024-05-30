@@ -257,69 +257,78 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
             rejected_logps (`torch.FloatTensor`):
                 Log probabilities of the rejected responses. Shape: (batch_size,)
         """
-
-        # https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
-        # NOTE: This will probably be used for M3, ill leave it here for now
-        # Alternative: template: <|user|>\nQuestion <|end|>\n<|assistant|>
-        # def tokenize_with_template(prompt, response):
-        #         # Apply a template to the prompt
-        #         formatted_prompt = f"Question: {prompt}\nAnswer:"
-        #         combined_text = f"{formatted_prompt} {response}"
-        #         # Tokenize the combined text
-        #         return tokenizer(combined_text, padding=False, return_tensors="pt")["input_ids"].to(self.device)
-
-        # prompt_tokens = [tokenizer(f"Question: {p}", padding=False, return_tensors="pt")["input_ids"].to(self.device) for p in batch["prompt"]]
-        # chosen_tokens = [tokenize_with_template(p, resp) for p, resp in zip(batch["prompt"], batch["chosen"])]
-        # rejected_tokens = [tokenize_with_template(p, resp) for p, resp in zip(batch["prompt"], batch["rejected"])]
         
-        # For now I implement this directly by concatenating the tokens from the question and answer for the gpt-2 model
-        prompt_tokens = [tokenizer(p, padding=False, return_tensors="pt")["input_ids"].to(self.device) for p in batch["prompt"]]
-        chosen_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"].to(self.device) for resp in batch["chosen"]]
-        rejected_tokens = [tokenizer(resp, padding=False, return_tensors="pt")["input_ids"].to(self.device) for resp in batch["rejected"]]
+        eos_token_id = tokenizer.eos_token_id
+        pad_token_id = tokenizer.pad_token_id
 
+        prompt_tokens = [
+            torch.cat([
+                tokenizer(p, padding=False, return_tensors="pt", truncation=True, max_length=128)["input_ids"].squeeze(0).to(self.device),
+                torch.tensor([eos_token_id], dtype=torch.long, device=self.device)  # Ensure EOS is on GPU
+            ], dim=0)
+            for p in batch["prompt"]
+        ]
 
-        def get_logps(prompt_tokens, resp_tokens):
+        chosen_tokens = [
+            torch.cat([
+                tokenizer(resp, padding=False, return_tensors="pt", truncation=True, max_length=512)["input_ids"].squeeze(0).to(self.device),
+                torch.tensor([eos_token_id], dtype=torch.long, device=self.device)  # Ensure EOS is on GPU
+            ], dim=0)
+            for resp in batch["chosen"]
+        ]
+
+        rejected_tokens = [
+            torch.cat([
+                tokenizer(resp, padding=False, return_tensors="pt", truncation=True, max_length=512)["input_ids"].squeeze(0).to(self.device),
+                torch.tensor([eos_token_id], dtype=torch.long, device=self.device)  # Ensure EOS is on GPU
+            ], dim=0)
+            for resp in batch["rejected"]
+        ]
             
-            concat_tokens = [torch.cat([prompt_tokens[i], resp_tokens[i]], dim=1)
-                             for i in range(len(resp_tokens))]
-            maxlen = max([len(t[0]) for t in concat_tokens])
+        def pad_sequences(sequences, max_len, pad_value=0):
+            """ Pad sequences to the same length with the specified pad value. """
+            return [torch.cat([seq, torch.full((max_len - len(seq),), pad_value, dtype=torch.long, device=seq.device)]) for seq in sequences]
+        
+        def calculate_log_probs(prompt_tokens, response_tokens, model, pad_token_id):
+            # Determine maximum sequence length in the current batch for padding
+            max_prompt_len = max(len(p) for p in prompt_tokens)
+            max_response_len = max(len(r) for r in response_tokens)
 
-            # For a chat model, we need to only keep the response mask as 1s here
-            attention_mask = torch.zeros(len(concat_tokens), maxlen).to(self.device)
-            mask = torch.zeros(len(concat_tokens), maxlen).to(self.device)
-            for i in range(len(concat_tokens)):
-                # Mask out the tokens not corresponding to output
-                mask[i, prompt_tokens[i].shape[1]:prompt_tokens[i].shape[1] + resp_tokens[i].shape[1]] = 1
-                # Mask out the actual padding
-                attention_mask[i, :prompt_tokens[i].shape[1] + resp_tokens[i].shape[1]] = 1
+            # Pad all sequences in the batch to the same length
+            prompt_tokens = pad_sequences(prompt_tokens, max_prompt_len, pad_token_id)
+            response_tokens = pad_sequences(response_tokens, max_response_len, pad_token_id)
 
-            concat = [torch.cat([t, torch.zeros((1, maxlen - t.shape[1]), dtype=t.dtype).to(self.device)], dim=1) for t in concat_tokens]
-            all_tokens = torch.cat(concat, dim=0)
+            input_ids = torch.cat([torch.cat([p, r], dim=0).unsqueeze(0) for p, r in zip(prompt_tokens, response_tokens)], dim=0)
+            attention_mask = torch.cat([torch.cat([(p != pad_token_id).long(), (r != pad_token_id).long()], dim=0).unsqueeze(0) for p, r in zip(prompt_tokens, response_tokens)], dim=0)
+     
+            # Model inference
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+         
+            # Calculate log probabilities
+            log_probs = F.log_softmax(outputs.logits, dim=-1)
 
-            if all_tokens.shape[1] > self.max_seq_length: 
-                all_tokens = all_tokens[:, :self.max_seq_length]
-                attention_mask = attention_mask[:, :self.max_seq_length]
-                mask = mask[:, :self.max_seq_length]
-                print("Warning: Truncated input to max_seq_length")
+            response_mask = torch.zeros_like(attention_mask)
+            for idx, (p, r) in enumerate(zip(prompt_tokens, response_tokens)):
+                prompt_length = p.size(0)
+                actual_response_length = (r != pad_token_id).sum()  # Only count non padding tokens in the response
+                response_mask[idx, prompt_length:prompt_length + actual_response_length] = 1
 
-            outputs = model(input_ids=all_tokens.to(self.device), attention_mask=attention_mask.to(self.device))
+            # Gather log probabilities for actual response tokens
+            gathered_log_probs = torch.gather(log_probs, 2, input_ids.unsqueeze(-1)).squeeze(-1)
 
-            logprobs = F.log_softmax(outputs.logits, dim=-1)
-            
-            logprobs = torch.gather(logprobs, 2, all_tokens.to(self.device).unsqueeze(-1)).squeeze(-1)
+            # Apply the response mask to exclude prompt parts from log probability calculations
+            response_log_probs = gathered_log_probs * response_mask
 
-            output = torch.sum(logprobs*mask, dim=-1)
+            # Sum log probabilities across the masked response tokens
+            final_log_probs = torch.sum(response_log_probs, dim=1)
 
-            # clear memory 
-            del outputs
-            del logprobs
-            gc.collect()
-            torch.cuda.empty_cache()
+            return final_log_probs
 
-            return output
 
-        # TODO: think if we need to normalize this by the length of the output for stability?
-        return get_logps(prompt_tokens, chosen_tokens), get_logps(prompt_tokens, rejected_tokens)
+        chosen_log_probs = calculate_log_probs(prompt_tokens, chosen_tokens, model, tokenizer.pad_token_id)
+        rejected_log_probs = calculate_log_probs(prompt_tokens, rejected_tokens, model, tokenizer.pad_token_id)
+
+        return (chosen_log_probs, rejected_log_probs)
 
     def get_logprobs(self, batch, tokenizer):
         return self._get_logprobs(self.pretrained_model, batch, tokenizer)
