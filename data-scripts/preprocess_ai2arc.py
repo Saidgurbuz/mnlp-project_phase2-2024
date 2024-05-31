@@ -37,8 +37,8 @@ def process_datasets(configs):
     all_data = []
     for config_name in configs:
         print(f"Processing {config_name}...")
-        # In this script we processes the training data only. Adjust split as needed.
-        dataset = load_dataset("allenai/ai2_arc", config_name, split='train') 
+        # Adjust split as needed - 'train', 'validation', 'test'
+        dataset = load_dataset("allenai/ai2_arc", config_name, split='test') 
         preprocessed_data = [preprocess_ai2_arc(entry) for entry in dataset]
         all_data.extend(preprocessed_data)
         print(f"Finished processing {config_name}.")
@@ -47,5 +47,5 @@ def process_datasets(configs):
 if __name__ == "__main__":
     configs = ['ARC-Challenge', 'ARC-Easy']
     combined_data = process_datasets(configs)
-    output_file_path = "mcq/ai2_arc/ai2_arc.jsonl"
+    output_file_path = "mcq/ai2_arc/mcqa_ai2arc_test.jsonl"
     save_to_jsonl(combined_data, output_file_path)
