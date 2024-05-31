@@ -199,24 +199,24 @@ class PreTrainedModelWrapper(nn.Module):
 
                 # Load the trained peft adapter config
                 if local_adapter_present:
-                    trained_adapter_config = PeftConfig.from_pretrained(pretrained_model_name_or_path)
+                    trained_adapter_config = PeftConfig.from_pretrained(pretrained_model_name_or_path, trust_remote_code=True)
                 else:
                     remote_adapter_dir = os.path.dirname(remote_adapter_config)
-                    trained_adapter_config = PeftConfig.from_pretrained(remote_adapter_dir)
+                    trained_adapter_config = PeftConfig.from_pretrained(remote_adapter_dir, trust_remote_code=True)
 
                 # Load the pretrained base model
                 pretrained_model = cls.transformers_parent_class.from_pretrained(
-                    trained_adapter_config.base_model_name_or_path, *model_args, **pretrained_kwargs
+                    trained_adapter_config.base_model_name_or_path, *model_args, **pretrained_kwargs, trust_remote_code=True
                 )
 
                 # Wrap the pretrained model with the trained peft adapter
                 pretrained_model = PeftModel.from_pretrained(
-                    pretrained_model, pretrained_model_name_or_path, is_trainable=is_trainable
+                    pretrained_model, pretrained_model_name_or_path, is_trainable=is_trainable, trust_remote_code=True
                 )
                 logging.info("Trained peft adapter loaded")
             else:
                 pretrained_model = cls.transformers_parent_class.from_pretrained(
-                    pretrained_model_name_or_path, *model_args, **pretrained_kwargs
+                    pretrained_model_name_or_path, *model_args, **pretrained_kwargs, trust_remote_code=True
                 )
 
                 if peft_config is not None:
@@ -239,7 +239,7 @@ class PreTrainedModelWrapper(nn.Module):
                         pretrained_model,
                         **peft_quantization_kwargs,
                     )
-                pretrained_model = get_peft_model(pretrained_model, peft_config)
+                pretrained_model = get_peft_model(pretrained_model, peft_config, trust_remote_code=True)
                 logging.info("peft adapter initialised")
         else:
             raise ValueError(
