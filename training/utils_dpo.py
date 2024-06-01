@@ -6,6 +6,7 @@ script_path = os.path.abspath(__file__)
 project_root = os.path.join(script_path, os.pardir, os.pardir)
 project_root = os.path.normpath(project_root)
 sys.path.insert(0, project_root)
+
 import numpy as np
 from enum import Enum
 from datasets import Dataset, concatenate_datasets
@@ -13,7 +14,6 @@ from transformers import PreTrainedTokenizer
 
 import torch
 from datasets import DatasetDict, load_dataset, load_from_disk
-from datasets.builder import DatasetGenerationError
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -105,20 +105,22 @@ def transform_dataset(data, tokenizer):
         "rejected": rejected_responses
     }
 
-def create_datasets(tokenizer, train_file_paths, m1_file_path, example_file_path, eval_file_paths, valid_perc=0.1):
+def create_datasets(tokenizer, train_file_paths, example_file_path, eval_file_paths):
+    # Read the data
     combined_data = read_jsonl_files(train_file_paths)
     
+    # Transform the data and do sanity checks for dpotrainer
     transformed_data = transform_dataset(combined_data, tokenizer)
-    
+
+    # Create Dataset train/eval Dataset class
     train_dataset = Dataset.from_dict(transformed_data)
-
     eval_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files(eval_file_paths), tokenizer))
-
-    m1_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files([m1_file_path]), tokenizer))
     example_dataset = Dataset.from_dict(transform_dataset(read_jsonl_files([example_file_path]), tokenizer))
 
-    full_train_dataset = concatenate_datasets([train_dataset, m1_dataset])
+    # Get full datasets
+    full_train_dataset = train_dataset
     full_test_dataset = concatenate_datasets([eval_dataset, example_dataset])
+
     return full_train_dataset, full_test_dataset
 
 def create_and_prepare_model(args, data_args):

@@ -4,12 +4,8 @@ from typing import Optional, List
 import torch.nn.functional as F
 from transformers import set_seed
 import torch
-from tqdm import tqdm
 from utils_dpo import create_and_prepare_model, create_datasets
 from trl import DPOConfig, DPOTrainer
-import sys
-import warnings
-warnings.filterwarnings("ignore")
 
 # Define and parse arguments.
 @dataclass
@@ -18,11 +14,9 @@ class ModelArguments:
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
     """
     model_name_or_path: str = field(
-        #default = "gpt2",
         #default = "microsoft/phi-1_5",
         #default = "microsoft/phi-2",
         default="microsoft/Phi-3-mini-4k-instruct",
-        #default = "gpt2",
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     chat_template_format: Optional[str] = field(
@@ -84,26 +78,21 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     train_dataset_names: List[str] = field(
-        default_factory=lambda: ["data/dpo/stackexchange/train_stackexchange.jsonl","data/dpo/ultrafeedback/train_ultrafeedback.jsonl"], #, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
+        default_factory=lambda: ["data/dpo/m1/train_m1.jsonl","data/dpo/stackexchange/train_stackexchange.jsonl","data/dpo/ultrafeedback/train_ultrafeedback.jsonl"], # NOTE: Add datasets here!
         metadata={"help": "List of preference datasets to use."},
     )
-    m1_dataset_path: str = field(
-        default="data/dpo/dpo_preference_m1.jsonl",
-        metadata={"help": "Path to the m1 preference dataset that will be always used for training."},
-    )
+
     example_dataset_path: str = field(
-        default="data/dpo_preference_example.jsonl",
+        default="model/datasets/dpo_preference_example.jsonl",
         metadata={"help": "Path to the example preference dataset that will be always used for evaluation."},
     )
 
     eval_dataset_names: List[str] = field(
-        default_factory=lambda: ["data/dpo/stackexchange/validation_stackexchange.jsonl", "data/dpo/ultrafeedback/validation_ultrafeedback.jsonl"],#, "data/dpo/dpo_preference_m1.jsonl"] # NOTE: Add datasets here!
+        default_factory=lambda: ["model/datasets/m1/validation_m1.jsonl", "model/datasets/stackexchange/validation_stackexchange.jsonl", "model/datasets/ultrafeedback/validation_ultrafeedback.jsonl"],
         metadata={"help": "List of preference datasets to use for validation."},
     )
 
     max_seq_length: Optional[int] = field(default=1024)
-
-    val_perc: float = field(default=0.1)
     
     append_concat_token: Optional[bool] = field(
         default=False,
@@ -135,14 +124,13 @@ def main(model_args, data_args):
     if model_args.gradient_checkpointing:
         model_args.gradient_checkpointing_kwargs = {"use_reentrant": model_args.use_reentrant}
 
-    train_dataset, validation_dataset = create_datasets(tokenizer, data_args.train_dataset_names, data_args.m1_dataset_path,
-                                                         data_args.example_dataset_path, data_args.eval_dataset_names, data_args.val_perc)
+    train_dataset, validation_dataset = create_datasets(tokenizer, data_args.train_dataset_names,
+                                                         data_args.example_dataset_path, data_args.eval_dataset_names)
     
-
-    # TODO: Discuss about the parameters, there are a lot
+    # Define DPO config
     training_args = DPOConfig(
         beta=0.1,
-        output_dir="checkpoints/" + model_args.model_name_or_path + "m1-stack-ultrafeedback", # TODO: CHANGE THIS TO YOUR DESIRED PATH
+        output_dir="checkpoints/" + model_args.model_name_or_path + "-datasets-name", # NOTE: Change this path
         do_eval = True,
         logging_steps=20,
         save_steps = 9000,
@@ -185,3 +173,4 @@ if __name__ == "__main__":
     model_args = ModelArguments()
     data_args = DataArguments()
     main(model_args, data_args)
+
