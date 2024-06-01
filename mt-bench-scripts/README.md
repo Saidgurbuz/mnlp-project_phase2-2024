@@ -20,7 +20,5 @@ register_conv_template(
     )
 )
 ```
-2. Place the mt-bench_generate.sh to /FastChat/fastchat/llm_judge
-3. Execute: `chmod +x mt-bench_generate.sh` and then `bash mt-bench_generate.sh`
-4. TODO:
+2. Place the mt-bench-scripts in /FastChat/fastchat/llm_judge folder and run them to reproduce our results.
 
