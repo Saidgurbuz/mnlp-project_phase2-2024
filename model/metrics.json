@@ -1,0 +1,5 @@
+{
+  "team_name": "chatterbox",
+  "task_type": "causal_lm",
+  "policy_reward_accuracy": 0.8154205607476636
+}

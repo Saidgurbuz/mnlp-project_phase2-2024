@@ -259,7 +259,7 @@ class AutoDPOModelForCausalLM(PreTrainedModelWrapper):
         # Tokenization logic as close as possible to DPOTrainer's source code
         prompt_tokens = [
             torch.cat([
-                tokenizer(p, padding=False, return_tensors="pt", truncation=True, max_length=128)["input_ids"].squeeze(0).to(self.device),
+                tokenizer(p, padding=False, return_tensors="pt", truncation=True, max_length=264)["input_ids"].squeeze(0).to(self.device),
                 torch.tensor([eos_token_id], dtype=torch.long, device=self.device)  
             ], dim=0)
             for p in batch["prompt"]
