@@ -21,4 +21,4 @@ register_conv_template(
 )
 ```
 2. Place the mt-bench-scripts in /FastChat/fastchat/llm_judge folder and run them to reproduce our results.
-
+3. For experimentation you can fork this repo: https://github.com/Stefanstud/FastChat
